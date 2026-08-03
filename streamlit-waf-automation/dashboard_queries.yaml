@@ -555,7 +555,7 @@ datasets:
   table_name: waf_co_01_06_serverless_cost_efficiency
   is_coming_soon: false
 - name: waf_co_01_09_4d154e61
-  display_name: 'CO-01-09: Photon vs Standard Performance Cost'
+  display_name: 'CO-01-09: Photon vs Standard DBU Cost'
   sql: "SELECT\n  CASE\n    WHEN sku_name LIKE '%PHOTON%' THEN 'Photon (Accelerated)'\n    ELSE 'Standard Engine'\n  END AS engine_type,\n  COUNT(*) AS workload_count,\n  ROUND(SUM(usage_quantity), 2) AS total_dbus\nFROM system.billing.usage\nWHERE usage_date >= CURRENT_DATE - INTERVAL '7' DAY\n  AND usage_type LIKE '%COMPUTE%'\nGROUP BY engine_type"
   parameters: []
   pillar: null
@@ -679,7 +679,7 @@ datasets:
 
 - name: waf_co_01_02_ba132837
   display_name: "CO-01-02: Job vs All-Purpose Cluster Usage"
-  sql: "SELECT CASE WHEN cluster_type = 'JOB' THEN 'Job Clusters (Cost Effective)' WHEN cluster_type = 'ALL_PURPOSE' THEN 'All-Purpose (Expensive)' ELSE 'Other' END as cluster_category, COUNT(*) as usage_count, ROUND(SUM(usage_quantity * list_price), 2) as total_cost FROM system.billing.usage WHERE usage_start_time >= CURRENT_DATE - INTERVAL '30' DAY AND usage_type LIKE '%COMPUTE%' GROUP BY cluster_category ORDER BY total_cost DESC"
+  sql: "SELECT CASE WHEN u.billing_origin_product = 'JOBS' THEN 'Job Clusters (Cost Effective)' WHEN u.billing_origin_product IN ('INTERACTIVE', 'ALL_PURPOSE') THEN 'All-Purpose (Expensive)' END as cluster_category, COUNT(*) as usage_count, ROUND(SUM(u.usage_quantity * lp.pricing.default), 2) as total_cost FROM system.billing.usage u LEFT JOIN system.billing.list_prices lp ON u.account_id = lp.account_id AND u.cloud = lp.cloud AND u.sku_name = lp.sku_name AND u.usage_unit = lp.usage_unit AND u.usage_end_time >= lp.price_start_time AND (u.usage_end_time < lp.price_end_time OR lp.price_end_time IS NULL) WHERE u.usage_date >= CURRENT_DATE - INTERVAL '30' DAY AND u.usage_type LIKE '%COMPUTE%' AND u.billing_origin_product IN ('JOBS', 'INTERACTIVE', 'ALL_PURPOSE') GROUP BY cluster_category ORDER BY total_cost DESC"
   parameters: []
   pillar: cost_optimization
   table_name: waf_co_01_02_chart
@@ -687,15 +687,15 @@ datasets:
   is_control_query: false
 - name: waf_co_01_06_f6a7b684
   display_name: "CO-01-06: Serverless Cost Efficiency"
-  sql: "SELECT CASE WHEN usage_type LIKE '%SERVERLESS%' THEN 'Serverless' ELSE 'Traditional' END as compute_type, ROUND(SUM(usage_quantity * list_price), 2) as total_cost, ROUND(AVG(usage_quantity * list_price), 2) as avg_cost_per_workload FROM system.billing.usage WHERE usage_start_time >= CURRENT_DATE - INTERVAL '30' DAY AND usage_type LIKE '%COMPUTE%' GROUP BY compute_type"
+  sql: "SELECT CASE WHEN UPPER(u.sku_name) LIKE '%SERVERLESS%' OR UPPER(u.usage_type) LIKE '%SERVERLESS%' THEN 'Serverless' ELSE 'Traditional' END as compute_type, ROUND(SUM(u.usage_quantity * lp.pricing.default), 2) as total_cost, ROUND(AVG(u.usage_quantity * lp.pricing.default), 2) as avg_cost_per_workload FROM system.billing.usage u LEFT JOIN system.billing.list_prices lp ON u.account_id = lp.account_id AND u.cloud = lp.cloud AND u.sku_name = lp.sku_name AND u.usage_unit = lp.usage_unit AND u.usage_end_time >= lp.price_start_time AND (u.usage_end_time < lp.price_end_time OR lp.price_end_time IS NULL) WHERE u.usage_date >= CURRENT_DATE - INTERVAL '30' DAY AND u.usage_type LIKE '%COMPUTE%' GROUP BY compute_type"
   parameters: []
   pillar: cost_optimization
   table_name: waf_co_01_06_chart
   is_coming_soon: false
   is_control_query: false
 - name: waf_co_01_09_4d154e61
-  display_name: "CO-01-09: Photon vs Standard Performance Cost"
-  sql: "SELECT CASE WHEN photon_enabled = true THEN 'Photon (3x Faster)' ELSE 'Standard Engine' END as engine_type, COUNT(*) as query_count, AVG(execution_duration_ms / 1000.0) as avg_duration_seconds, ROUND(SUM(usage_quantity * list_price), 2) as total_cost FROM system.query.history q JOIN system.billing.usage u ON q.workspace_id = u.workspace_id WHERE q.start_time >= CURRENT_DATE - INTERVAL '7' DAY AND u.usage_start_time >= CURRENT_DATE - INTERVAL '7' DAY GROUP BY engine_type"
+  display_name: "CO-01-09: Photon vs Standard DBU Cost"
+  sql: "SELECT CASE WHEN u.product_features.is_photon = true THEN 'Photon' ELSE 'Standard Engine' END as engine_type, COUNT(*) as usage_count, ROUND(SUM(u.usage_quantity), 2) as total_dbus, ROUND(SUM(u.usage_quantity * lp.pricing.default), 2) as total_cost FROM system.billing.usage u LEFT JOIN system.billing.list_prices lp ON u.account_id = lp.account_id AND u.cloud = lp.cloud AND u.sku_name = lp.sku_name AND u.usage_unit = lp.usage_unit AND u.usage_end_time >= lp.price_start_time AND (u.usage_end_time < lp.price_end_time OR lp.price_end_time IS NULL) WHERE u.usage_date >= CURRENT_DATE - INTERVAL '30' DAY AND u.usage_type LIKE '%COMPUTE%' AND u.billing_origin_product IN ('JOBS', 'INTERACTIVE', 'PIPELINES', 'ALL_PURPOSE') GROUP BY engine_type ORDER BY total_cost DESC"
   parameters: []
   pillar: cost_optimization
   table_name: waf_co_01_09_chart
@@ -703,7 +703,7 @@ datasets:
   is_control_query: false
 - name: waf_co_02_01_e3330123
   display_name: "CO-02-01: Auto-Termination Savings"
-  sql: "SELECT CASE WHEN auto_termination_minutes > 0 THEN 'Auto-Terminate Enabled' ELSE 'No Auto-Terminate' END as termination_status, COUNT(DISTINCT cluster_id) as cluster_count, AVG(DATEDIFF(MINUTE, start_time, end_time)) as avg_runtime_minutes, ROUND(SUM(CASE WHEN state = 'RUNNING' AND DATEDIFF(MINUTE, start_time, CURRENT_TIMESTAMP) > 60 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as idle_cluster_percent FROM system.compute.clusters WHERE start_time >= CURRENT_TIMESTAMP - INTERVAL '7' DAY GROUP BY termination_status"
+  sql: "WITH latest_clusters AS (SELECT account_id, workspace_id, cluster_id, auto_termination_minutes, delete_time, ROW_NUMBER() OVER (PARTITION BY account_id, workspace_id, cluster_id ORDER BY change_time DESC) AS rn FROM system.compute.clusters WHERE cluster_source IN ('UI', 'API')) SELECT CASE WHEN COALESCE(auto_termination_minutes, 0) > 0 THEN 'Auto-Terminate Enabled' ELSE 'No Auto-Terminate' END as termination_status, COUNT(DISTINCT CONCAT(workspace_id, ':', cluster_id)) as cluster_count, ROUND(AVG(auto_termination_minutes), 1) as avg_auto_termination_minutes FROM latest_clusters WHERE rn = 1 AND delete_time IS NULL GROUP BY termination_status ORDER BY cluster_count DESC"
   parameters: []
   pillar: cost_optimization
   table_name: waf_co_02_01_chart

@@ -664,7 +664,7 @@
     },
     {
       "name": "waf_co_01_09_4d154e61",
-      "displayName": "CO-01-09: Photon vs Standard Performance Cost",
+      "displayName": "CO-01-09: Photon vs Standard DBU Cost",
       "queryLines": [
         "SELECT * FROM {{catalog}}.waf_cache.waf_co_01_09_chart"
       ]
